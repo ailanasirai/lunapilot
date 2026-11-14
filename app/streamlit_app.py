@@ -1,4 +1,5 @@
 import base64
+import calendar
 import io
 import sys
 from datetime import date
@@ -16,8 +17,9 @@ from engine.geometry import analyze_site, load_sites  # noqa: E402
 st.set_page_config(page_title="LunaPilot", page_icon="🌙", layout="wide")
 
 ASSETS = Path(__file__).parent / "assets"
-MIN_D, MAX_D = date(1900, 1, 1), date(2050, 1, 1)  # kernel coverage (from David)
+MIN_D, MAX_D = date(1900, 1, 1), date(2050, 1, 1)  # ephemeris kernel coverage
 LIMITATION = "Limitation: flat horizon, no terrain shadows. Scores can read 0% or 100% because terrain is ignored."
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
 @st.cache_resource
@@ -90,6 +92,9 @@ button[data-baseweb="tab"] p {color: #eaf2ff !important;}
   2% {opacity: 1;}
   10% {opacity: 0; transform: translate(-480px, 340px) rotate(-35deg);}
   100% {opacity: 0; transform: translate(-480px, 340px) rotate(-35deg);}}
+@keyframes blob1 {to {transform: translate(-220px, 160px) scale(1.25);}}
+@keyframes blob2 {to {transform: translate(260px, -140px) scale(1.2);}}
+@keyframes sweep {from {background-position: 150% 0;} to {background-position: -150% 0;}}
 
 .hero {position: relative; height: 260px; border-radius: 20px; overflow: hidden; margin-bottom: 18px;
   border: 1px solid rgba(120,200,255,.25); animation: rise .9s ease-out both, edgeglow 6s ease-in-out infinite;}
@@ -106,6 +111,8 @@ button[data-baseweb="tab"] p {color: #eaf2ff !important;}
 .orbit-system {position: absolute; right: 56px; top: 50%; width: 220px; height: 220px; margin-top: -110px; z-index: 2;
   animation: floaty 7s ease-in-out infinite;}
 .orbit-system::before {content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1px dashed rgba(120,200,255,.35);}
+.orbit-system::after {content: ""; position: absolute; inset: 25px; border-radius: 50%; border: 1px dotted rgba(214,255,63,.35);
+  background: radial-gradient(circle at 50% 0, #d6ff3f 0 4px, transparent 5px); animation: spin 18s linear infinite reverse;}
 .earth {position: absolute; left: 50%; top: 50%; width: 130px; height: 130px; margin: -65px 0 0 -65px;
   object-fit: cover; clip-path: circle(41%); filter: drop-shadow(0 0 22px rgba(80,170,255,.85)); animation: pulse 8s ease-in-out infinite;}
 .orbit {position: absolute; inset: 0; animation: spin 30s linear infinite;}
@@ -115,12 +122,33 @@ button[data-baseweb="tab"] p {color: #eaf2ff !important;}
 .mission {position: relative; padding: 22px 26px; border-radius: 16px; margin: 12px 0 16px; border: 1px solid rgba(120,200,255,.25);
   background: linear-gradient(90deg, rgba(2,4,13,.92) 0%, rgba(2,4,13,.55) 100%), url(__MOONCLOSE__) right center/cover;
   animation: rise .8s ease-out both;}
+.mission::after {content: ""; position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+  background: linear-gradient(110deg, transparent 40%, rgba(255,255,255,.10) 50%, transparent 60%);
+  background-size: 250% 100%; animation: sweep 6s linear infinite;}
 .mission .label {font-size: .85rem; opacity: .8;}
 .mission .big {font-size: 1.7rem; font-weight: 600; margin: 2px 0 6px;}
-div[data-baseweb="select"] div, [data-testid="stDateInput"] div, [data-testid="stDateInput"] input,
+
 [data-testid="stChatInput"] textarea {background-color: rgba(15,27,68,.92) !important; color: #eaf2ff !important;
   border-color: rgba(120,200,255,.35) !important;}
-div[data-baseweb="select"] svg, [data-testid="stDateInput"] svg {fill: #eaf2ff !important;}
+[data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="input"] > div, [data-baseweb="base-input"] {
+  background: rgba(15,27,68,.92) !important; border-color: rgba(120,200,255,.35) !important;}
+[data-baseweb="select"] *, [data-baseweb="input"] input {color: #eaf2ff !important;}
+[data-baseweb="select"] svg, [data-testid="stDateInput"] svg {fill: #eaf2ff !important;}
+[data-baseweb="popover"] ul, [data-baseweb="menu"] {background: #0f1b44 !important;}
+[data-baseweb="popover"] li, [data-baseweb="menu"] li {color: #eaf2ff !important; background: transparent !important;}
+[data-baseweb="popover"] li:hover {background: rgba(120,200,255,.18) !important;}
+[data-baseweb="calendar"] {background: #0f1b44 !important;}
+[data-baseweb="calendar"] * {color: #eaf2ff !important;}
+[data-baseweb="tag"] {background: rgba(120,200,255,.25) !important;}
+
+[data-testid="stDownloadButton"] button, .stButton button {
+  background: linear-gradient(135deg, rgba(40,80,190,.85), rgba(110,70,220,.85)) !important;
+  border: 1px solid rgba(120,200,255,.55) !important; border-radius: 12px !important;
+  transition: transform .25s ease, box-shadow .25s ease;}
+[data-testid="stDownloadButton"] button *, .stButton button * {color: #eaf2ff !important;}
+[data-testid="stDownloadButton"] button:hover, .stButton button:hover {
+  transform: translateY(-3px); box-shadow: 0 0 22px rgba(120,200,255,.55); border-color: #d6ff3f !important;}
+
 [data-testid="stMetric"], [data-testid="stChatMessage"] {background: rgba(255,255,255,.06);
   border: 1px solid rgba(120,200,255,.25); border-radius: 14px; padding: 14px 18px;
   animation: rise .8s ease-out both; transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;}
@@ -133,6 +161,21 @@ div[data-baseweb="select"] svg, [data-testid="stDateInput"] svg {fill: #eaf2ff !
 .note, .note * {color: #eaf2ff !important;}
 button[data-baseweb="tab"] {transition: transform .2s ease;}
 button[data-baseweb="tab"]:hover {transform: translateY(-2px);}
+
+.orbits {position: fixed; right: -300px; bottom: -300px; width: 760px; height: 760px; z-index: 0; pointer-events: none; opacity: .6;}
+.orbits i {position: absolute; border-radius: 50%; border: 1px solid rgba(120,200,255,.2); animation: spin 60s linear infinite;}
+.orbits i:nth-child(1) {inset: 0;}
+.orbits i:nth-child(2) {inset: 90px; border-style: dashed; animation-duration: 40s; animation-direction: reverse;}
+.orbits i:nth-child(3) {inset: 190px; animation-duration: 26s;}
+.orbits i::after {content: ""; position: absolute; top: -5px; left: 50%; width: 10px; height: 10px; margin-left: -5px;
+  border-radius: 50%; background: #9fe8ff; box-shadow: 0 0 14px 4px rgba(120,200,255,.8);}
+.orbits i:nth-child(2)::after {background: #d6ff3f; box-shadow: 0 0 14px 4px rgba(214,255,63,.7);}
+.blob {position: fixed; z-index: 0; pointer-events: none; border-radius: 50%; filter: blur(60px); opacity: .35; mix-blend-mode: screen;}
+.blob.b1 {width: 420px; height: 420px; left: 55%; top: 10%; background: radial-gradient(circle, #5a3cff, transparent 70%);
+  animation: blob1 26s ease-in-out infinite alternate;}
+.blob.b2 {width: 380px; height: 380px; left: 5%; top: 55%; background: radial-gradient(circle, #00b4ff, transparent 70%);
+  animation: blob2 32s ease-in-out infinite alternate;}
+
 @media (max-width: 800px) {.orbit-system {display: none;} .hero-text .title {font-size: 2.2rem;}}
 @media (prefers-reduced-motion: reduce) {* {animation: none !important;}}
 </style>
@@ -144,6 +187,8 @@ CSS = (
 )
 st.markdown(
     CSS + '<div class="nebula"></div><div class="sunglow"></div>'
+    '<div class="blob b1"></div><div class="blob b2"></div>'
+    '<div class="orbits"><i></i><i></i><i></i></div>'
     '<div class="shoot s1"></div><div class="shoot s2"></div><div class="shoot s3"></div>',
     unsafe_allow_html=True,
 )
@@ -175,6 +220,22 @@ def run(site_id, start, end, step):
     return analyze_site(site_id, start, end, step)
 
 
+@st.cache_data(show_spinner=False)
+def year_view(year, step=120):
+    rows = []
+    for s in get_sites():
+        for mth in range(1, 13):
+            last = calendar.monthrange(year, mth)[1]
+            m = run(s["id"], f"{year}-{mth:02d}-01", f"{year}-{mth:02d}-{last}", step)["metrics"]
+            rows.append({
+                "Site": s["name"],
+                "Month": MONTHS[mth - 1],
+                "Sunlit %": m["sunlit_fraction"] * 100,
+                "Earth visible %": m["earth_visible_fraction"] * 100,
+            })
+    return pd.DataFrame(rows)
+
+
 def scores(m, w_power):
     power = m["sunlit_fraction"] * 100
     comms = m["earth_visible_fraction"] * 100
@@ -197,20 +258,19 @@ def site_rows(sites, start, end, step, w):
     return pd.DataFrame(rows)
 
 
-def make_chart(times, values, title, color):
-    fig = go.Figure(go.Scatter(x=times, y=values, mode="lines", line=dict(color=color, width=3)))
-    fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,.5)")
-    fig.update_layout(
-        template="plotly_dark",
-        title=dict(text=title, font=dict(color="#eaf2ff", size=18)),
-        yaxis_title="Elevation (degrees)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#eaf2ff"),
-    )
+def style_fig(fig):
+    fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      font=dict(color="#eaf2ff"))
     fig.update_xaxes(gridcolor="rgba(120,200,255,.15)", color="#eaf2ff")
     fig.update_yaxes(gridcolor="rgba(120,200,255,.15)", color="#eaf2ff")
     return fig
+
+
+def make_chart(times, values, title, color):
+    fig = go.Figure(go.Scatter(x=times, y=values, mode="lines", line=dict(color=color, width=3)))
+    fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,.5)")
+    fig.update_layout(title=dict(text=title, font=dict(color="#eaf2ff", size=18)), yaxis_title="Elevation (degrees)")
+    return style_fig(fig)
 
 
 def md_table(df):
@@ -255,7 +315,7 @@ def copilot_answer(q, df, window, w):
                  "period, comparing sites, or how the score is calculated.")
 
 
-# ---------- load sites ----------
+# ---------- app ----------
 sites = get_sites()
 site_ids = [s["id"] for s in sites]
 by_id = {s["id"]: s for s in sites}
@@ -264,6 +324,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["Explorer", "Compare", "Copilot", "About and c
 df_all = None
 window = ""
 w = 0.5
+step = 60
 
 with tab1:
     site_id = st.selectbox("Choose a landing site", site_ids, format_func=lambda i: by_id[i]["name"])
@@ -281,12 +342,12 @@ with tab1:
 
     if ok:
         window = f"{start} to {end}"
+        res = None
         try:
             with st.spinner("Computing Sun and Earth positions (the first run downloads about 18 MB of NASA kernels)..."):
                 res = run(site_id, str(start), str(end), step)
                 df_all = site_rows(sites, start, end, step, w)
-        except Exception as e:  # keep the app alive, show a clear message
-            res = None
+        except Exception as e:  # keep the app alive and show a clear message
             note(f"The engine could not run: {e}", "warn")
 
         if res is not None:
@@ -339,14 +400,30 @@ with tab2:
         fig = go.Figure()
         fig.add_bar(x=view["Site"], y=view["Power score"], name="Power score", marker_color="#d6ff3f")
         fig.add_bar(x=view["Site"], y=view["Comms score"], name="Comms score", marker_color="#3fe0ff")
-        fig.update_layout(barmode="group", template="plotly_dark", yaxis_range=[0, 100],
-                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#eaf2ff"))
-        st.plotly_chart(fig, width="stretch", theme=None)
+        fig.update_layout(barmode="group", yaxis_range=[0, 100])
+        st.plotly_chart(style_fig(fig), width="stretch", theme=None)
+
+        st.subheader("Season view")
+        st.caption("How the share of time above the horizon changes month by month through one year.")
+        sc1, sc2 = st.columns([1, 2])
+        year = sc1.number_input("Year", min_value=1900, max_value=2049, value=2029, step=1)
+        metric = sc2.radio("Show", ["Sunlit %", "Earth visible %"], horizontal=True)
+        if st.toggle("Compute the season view for this year"):
+            try:
+                with st.spinner("Computing 12 months for every site..."):
+                    yv = year_view(int(year))
+                fig2 = go.Figure()
+                for name in yv["Site"].unique():
+                    d = yv[yv["Site"] == name]
+                    fig2.add_scatter(x=d["Month"], y=d[metric], mode="lines+markers", name=name, line=dict(width=3))
+                fig2.update_layout(yaxis_title=metric, yaxis_range=[0, 100])
+                st.plotly_chart(style_fig(fig2), width="stretch", theme=None)
+            except Exception as e:
+                note(f"The season view could not be computed: {e}", "warn")
     note(LIMITATION)
 
 with tab3:
-    note("Tool mode: every answer is built from numbers our engine computed for the window selected in the Explorer tab. "
-         "The language model layer comes next.", "warn")
+    note("Every answer is built from numbers our engine computed for the window selected in the Explorer tab.", "warn")
     st.caption("Try: Which site has the longest sunlight? Which site has the best Earth link? Compare two sites. "
                "What is the longest dark period at Nobile Rim 2? How is the score calculated?")
     if "messages" not in st.session_state:
@@ -374,13 +451,17 @@ with tab4:
              "at the chosen site. Scores are shares of time the Sun or Earth is above the horizon.")
     st.subheader("Data sources")
     st.write("Ephemerides and Moon orientation kernels: NASA JPL / NAIF (downloaded at first run). "
-             "Computation: Skyfield. Region names: NASA Artemis III candidate region announcement. "
-             "Coordinates are approximate region centres taken from the papers below.")
+             "Computation: Skyfield. Region names come from NASA's Artemis III candidate region announcement. "
+             "Coordinates are approximate region centres taken from the sources below.")
     for s in sites:
-        st.write(f"{s['name']}: {s['source']}")
+        st.write(f"{s['name']}: coordinates from {s['source']}")
+        if s.get("nasa_source"):
+            st.write(f"Region name source: {s['nasa_source']}")
     st.subheader("Use of AI")
     st.write("AI tools (Claude) helped write parts of the code. Numbers are computed by our own engine and checked by the team.")
     st.subheader("Image credits (Pixabay)")
     st.write("Earth and Sun: wikiimages. Moon: jwvein and bellergy. Nebula: timrael. Lunar landing: cristianis. "
              "Links and licenses are listed in docs/credits.md.")
+    st.subheader("Team")
+    st.write("Sunlit Signal, a team from Pakistan and Uganda, NASA Space Apps Challenge 2026.")
     note(LIMITATION)
