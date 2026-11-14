@@ -4,20 +4,25 @@
     "name": "Connecting Ridge",
     "latitude": -89.5343,
     "longitude": 209.9477,
-    "source": "https://digitalcommons.humboldt.edu/cgi/viewcontent.cgi?article=1062&context=ideafest2024"
+    "source": "https://digitalcommons.humboldt.edu/cgi/viewcontent.cgi?article=1062&context=ideafest2024",
+    "nasa_source": "https://www.nasa.gov/news-release/nasa-identifies-candidate-regions-for-landing-next-americans-on-moon/"
+
   },
   {
     "id": "peak_near_shackleton",
     "name": "Peak Near Shackleton",
     "latitude": -89.0170,
     "longitude": 126.2730,
-    "source": "https://digitalcommons.humboldt.edu/cgi/viewcontent.cgi?article=1062&context=ideafest2024"
+    "source": "https://digitalcommons.humboldt.edu/cgi/viewcontent.cgi?article=1062&context=ideafest2024",
+    "nasa_source": "https://www.nasa.gov/news-release/nasa-identifies-candidate-regions-for-landing-next-americans-on-moon/"
+
   },
   {
     "id": "nobile_rim_2",
     "name": "Nobile Rim 2",
     "latitude": -84.2016,
     "longitude": 60.6999,
-    "source": "https://www.sciencedirect.com/science/article/pii/S0094576524006234"
+    "source": "https://www.sciencedirect.com/science/article/pii/S0094576524006234",
+    "nasa_source": "https://www.nasa.gov/news-release/nasa-identifies-candidate-regions-for-landing-next-americans-on-moon/"
   }
 ]
