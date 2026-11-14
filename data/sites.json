@@ -1,0 +1,23 @@
+[
+  {
+    "id": "connecting_ridge",
+    "name": "Connecting Ridge",
+    "latitude": -89.5343,
+    "longitude": 209.9477,
+    "source": "https://digitalcommons.humboldt.edu/cgi/viewcontent.cgi?article=1062&context=ideafest2024"
+  },
+  {
+    "id": "peak_near_shackleton",
+    "name": "Peak Near Shackleton",
+    "latitude": -89.0170,
+    "longitude": 126.2730,
+    "source": "https://digitalcommons.humboldt.edu/cgi/viewcontent.cgi?article=1062&context=ideafest2024"
+  },
+  {
+    "id": "nobile_rim_2",
+    "name": "Nobile Rim 2",
+    "latitude": -84.2016,
+    "longitude": 60.6999,
+    "source": "https://www.sciencedirect.com/science/article/pii/S0094576524006234"
+  }
+]

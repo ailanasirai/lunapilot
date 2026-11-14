@@ -153,6 +153,7 @@ activemq-data/
 .env
 .envrc
 .venv
+denv/
 env/
 venv/
 ENV/
@@ -218,3 +219,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+data/ephemeris_cache/
