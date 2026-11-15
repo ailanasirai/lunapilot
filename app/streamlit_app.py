@@ -19,8 +19,10 @@ st.set_page_config(page_title="LunaPilot", page_icon="🌙", layout="wide")
 ASSETS = Path(__file__).parent / "assets"
 MIN_D, MAX_D = date(1900, 1, 1), date(2050, 1, 1)  # ephemeris kernel coverage
 LIMITATION = (
-    "Limitation: by default the horizon is flat and terrain shadows are ignored, so scores can read 0% or 100%. "
-    "The horizon mask sliders show how results change if terrain or antenna limits raise the horizon."
+    "Model scope: scores use a flat local horizon, and the geometry is validated against NASA JPL Horizons. "
+    "Near the pole the Sun stays within about 1.5 degrees of the horizon, so a flat horizon can give 0% or 100%. "
+    "The horizon mask sliders are what-if tests for terrain or antenna limits, not measured terrain. "
+    "Measured LOLA terrain horizons are the next step."
 )
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -506,6 +508,10 @@ with tab4:
     st.write("For each time step the engine takes the Sun and Earth positions from NASA JPL ephemerides, "
              "converts them to the Moon body frame, and computes the elevation above a local horizon "
              "at the chosen site. Scores are shares of time the Sun or Earth is above the horizon mask.")
+    st.subheader("Validation")
+    st.write("Sun and Earth elevations from our engine were compared with NASA JPL Horizons for all three sites "
+             "over 24 hours on 2029-07-01 (hourly samples). The maximum difference was 0.000 degrees for both bodies. "
+             "The log is in docs/horizons_validation.txt, and the score logic has unit tests in tests/.")
     st.subheader("Data sources")
     st.write("Ephemerides and Moon orientation kernels: NASA JPL / NAIF (downloaded at first run). "
              "Computation: Skyfield. Region names come from NASA's Artemis III candidate region announcement. "
@@ -520,5 +526,6 @@ with tab4:
     st.write("Earth and Sun: wikiimages. Moon: jwvein and bellergy. Nebula: timrael. Lunar landing: cristianis. "
              "Links and licenses are listed in docs/credits.md.")
     st.subheader("Team")
-    st.write("Sunlit Signal, a team from Pakistan and Uganda, NASA Space Apps Challenge 2026.")
+    st.write("Sunlit Signal, a team from Pakistan and Uganda, NASA Space Apps Challenge 2026. "
+             "Aila Nasir: team lead, app and product. Ekeu David: engine. Umar Akhtar: team member.")
     note(LIMITATION)
