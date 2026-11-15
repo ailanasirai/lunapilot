@@ -108,6 +108,12 @@ def analyze_site(
     end_dt = _parse_utc_datetime(end)
     if end_dt <= start_dt:
         raise ValueError("'end' date must be strictly after 'start' date.")
+    
+    min_dt = datetime(1900, 1, 1, tzinfo=timezone.utc)
+    max_dt = datetime(2050, 1, 1, tzinfo=timezone.utc)
+    if start_dt < min_dt or end_dt > max_dt:
+        raise ValueError("Dates must be between 1900-01-01 and 2050-01-01.")
+
 
     dt_list = []
     current_dt = start_dt
