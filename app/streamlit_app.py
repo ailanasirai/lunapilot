@@ -1,5 +1,4 @@
 import base64
-import calendar
 import io
 import sys
 from datetime import date
@@ -12,13 +11,17 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from engine.analysis import best_window, fractions, monthly_table, scores  # noqa: E402
 from engine.geometry import analyze_site, load_sites  # noqa: E402
 
 st.set_page_config(page_title="LunaPilot", page_icon="🌙", layout="wide")
 
 ASSETS = Path(__file__).parent / "assets"
 MIN_D, MAX_D = date(1900, 1, 1), date(2050, 1, 1)  # ephemeris kernel coverage
-LIMITATION = "Limitation: flat horizon, no terrain shadows. Scores can read 0% or 100% because terrain is ignored."
+LIMITATION = (
+    "Limitation: by default the horizon is flat and terrain shadows are ignored, so scores can read 0% or 100%. "
+    "The horizon mask sliders show how results change if terrain or antenna limits raise the horizon."
+)
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
@@ -220,32 +223,10 @@ def run(site_id, start, end, step):
     return analyze_site(site_id, start, end, step)
 
 
-@st.cache_data(show_spinner=False)
-def year_view(year, step=120):
-    rows = []
-    for s in get_sites():
-        for mth in range(1, 13):
-            last = calendar.monthrange(year, mth)[1]
-            m = run(s["id"], f"{year}-{mth:02d}-01", f"{year}-{mth:02d}-{last}", step)["metrics"]
-            rows.append({
-                "Site": s["name"],
-                "Month": MONTHS[mth - 1],
-                "Sunlit %": m["sunlit_fraction"] * 100,
-                "Earth visible %": m["earth_visible_fraction"] * 100,
-            })
-    return pd.DataFrame(rows)
-
-
-def scores(m, w_power):
-    power = m["sunlit_fraction"] * 100
-    comms = m["earth_visible_fraction"] * 100
-    return power, comms, w_power * power + (1 - w_power) * comms
-
-
-def site_rows(sites, start, end, step, w):
+def site_rows(sites, start, end, step, w, sm, em):
     rows = []
     for s in sites:
-        m = run(s["id"], str(start), str(end), step)["metrics"]
+        m = fractions(run(s["id"], str(start), str(end), step), sm, em)
         p, c, o = scores(m, w)
         rows.append({
             "Site": s["name"],
@@ -258,6 +239,35 @@ def site_rows(sites, start, end, step, w):
     return pd.DataFrame(rows)
 
 
+@st.cache_data(show_spinner=False)
+def year_view(year, sm, em, step=120):
+    frames = []
+    for s in get_sites():
+        res = run(s["id"], f"{year}-01-01", f"{year}-12-31", step)
+        g = monthly_table(res, sm, em).reset_index()
+        g["Site"] = s["name"]
+        g["Month"] = g["month"].map(lambda i: MONTHS[i - 1])
+        frames.append(g)
+    return pd.concat(frames, ignore_index=True)
+
+
+@st.cache_data(show_spinner=False)
+def window_table(year, days, w, sm, em, step=120):
+    rows = []
+    for s in get_sites():
+        res = run(s["id"], f"{year}-01-01", f"{year}-12-31", step)
+        b = best_window(res, days, w, sm, em)
+        rows.append({
+            "Site": s["name"],
+            "Window start": b["start"].date().isoformat(),
+            "Window end": b["end"].date().isoformat(),
+            "Power %": b["power"],
+            "Comms %": b["comms"],
+            "Overall": b["overall"],
+        })
+    return pd.DataFrame(rows)
+
+
 def style_fig(fig):
     fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                       font=dict(color="#eaf2ff"))
@@ -266,9 +276,12 @@ def style_fig(fig):
     return fig
 
 
-def make_chart(times, values, title, color):
+def make_chart(times, values, title, color, mask=0.0):
     fig = go.Figure(go.Scatter(x=times, y=values, mode="lines", line=dict(color=color, width=3)))
     fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,.5)")
+    if mask > 0:
+        fig.add_hline(y=mask, line_dash="dot", line_color="#ff8a5c",
+                      annotation_text=f"mask {mask:g} deg", annotation_font_color="#ff8a5c")
     fig.update_layout(title=dict(text=title, font=dict(color="#eaf2ff", size=18)), yaxis_title="Elevation (degrees)")
     return style_fig(fig)
 
@@ -281,10 +294,10 @@ def md_table(df):
     return "\n".join(lines)
 
 
-def copilot_answer(q, df, window, w):
-    """Tool-based answers. Every number comes from the engine results in df."""
+def copilot_answer(q, df, window, w, best_fn):
+    """Tool-based answers. Every number comes from the engine results in df or best_fn()."""
     ql = q.lower()
-    caveat = "Flat horizon, no terrain shadows. Scores are shares of time above the horizon."
+    caveat = "Scores are shares of time above the horizon mask. Default is a flat horizon with no terrain shadows."
     named = [n for n in df["Site"] if n.lower() in ql]
     sub = df[df["Site"].isin(named)] if named else df
 
@@ -297,6 +310,13 @@ def copilot_answer(q, df, window, w):
         return reply(
             f"Power score = share of time the Sun is above the horizon x 100. Comms score = share of time Earth "
             f"is above the horizon x 100. Overall = {w:.2f} x power + {1 - w:.2f} x comms."
+        )
+    if any(k in ql for k in ("best window", "best week", "best time", "best days", "when should")):
+        bt = best_fn()
+        top = bt.loc[bt["Overall"].idxmax()]
+        return reply(
+            f"The best 7-day window of the year is at {top['Site']}, from {top['Window start']} to "
+            f"{top['Window end']}, with an overall score of {top['Overall']:.1f}.", bt
         )
     if any(k in ql for k in ("dark", "night", "shadow")):
         parts = "; ".join(f"{r['Site']}: {r['Longest dark (h)']:.0f} hours" for _, r in sub.iterrows())
@@ -312,7 +332,7 @@ def copilot_answer(q, df, window, w):
         return reply(f"{b['Site']} has the most sunlight, with a power score of {b['Power score']:.1f}.",
                      df[["Site", "Power score"]])
     return reply("I need a bit more detail. Ask about sunlight (power), Earth link (comms), the longest dark "
-                 "period, comparing sites, or how the score is calculated.")
+                 "period, the best window, comparing sites, or how the score is calculated.")
 
 
 # ---------- app ----------
@@ -325,6 +345,9 @@ df_all = None
 window = ""
 w = 0.5
 step = 60
+sun_mask = 0.0
+earth_mask = 0.0
+start = date(2029, 7, 1)
 
 with tab1:
     site_id = st.selectbox("Choose a landing site", site_ids, format_func=lambda i: by_id[i]["name"])
@@ -333,6 +356,12 @@ with tab1:
     end = c2.date_input("End date", value=date(2029, 7, 31), min_value=MIN_D, max_value=MAX_D)
     step = c3.selectbox("Time step (minutes)", [30, 60, 120], index=1)
     w = st.slider("Weight on power (the rest goes to comms)", 0, 100, 50) / 100
+    d1, d2 = st.columns(2)
+    sun_mask = d1.slider("Horizon mask for the Sun (degrees)", 0.0, 5.0, 0.0, 0.1,
+                         help="0 means a flat horizon. Raise it to test what terrain around the site would do.")
+    earth_mask = d2.slider("Minimum Earth elevation for comms (degrees)", 0.0, 10.0, 0.0, 0.5,
+                           help="Antenna or terrain limit. 0 means any Earth above the flat horizon counts.")
+    st.caption("0 degrees is the validated flat-horizon geometry. Higher masks are what-if tests, not real terrain data.")
 
     ok = end >= start and (end - start).days <= 366
     if end < start:
@@ -342,11 +371,13 @@ with tab1:
 
     if ok:
         window = f"{start} to {end}"
+        if sun_mask > 0 or earth_mask > 0:
+            window += f", Sun mask {sun_mask:g} deg, Earth mask {earth_mask:g} deg"
         res = None
         try:
             with st.spinner("Computing Sun and Earth positions (the first run downloads about 18 MB of NASA kernels)..."):
                 res = run(site_id, str(start), str(end), step)
-                df_all = site_rows(sites, start, end, step, w)
+                df_all = site_rows(sites, start, end, step, w, sun_mask, earth_mask)
         except Exception as e:  # keep the app alive and show a clear message
             note(f"The engine could not run: {e}", "warn")
 
@@ -354,21 +385,21 @@ with tab1:
             s = by_id[site_id]
             st.markdown(
                 f'<div class="mission"><div class="label">Selected site</div><div class="big">{s["name"]}</div>'
-                f'<div class="label">Latitude {s["latitude"]}, longitude {s["longitude"]} | Window: {window}</div></div>',
+                f'<div class="label">Latitude {s["latitude"]}, longitude {s["longitude"]} | Window: {start} to {end}</div></div>',
                 unsafe_allow_html=True,
             )
             times = pd.to_datetime(res["time"])
             sun = res["sun_elevation_deg"]
             earth = res["earth_elevation_deg"]
             left, right = st.columns(2)
-            left.plotly_chart(make_chart(times, sun, "Sun elevation", "#d6ff3f"), width="stretch", theme=None)
-            right.plotly_chart(make_chart(times, earth, "Earth elevation", "#3fe0ff"), width="stretch", theme=None)
+            left.plotly_chart(make_chart(times, sun, "Sun elevation", "#d6ff3f", sun_mask), width="stretch", theme=None)
+            right.plotly_chart(make_chart(times, earth, "Earth elevation", "#3fe0ff", earth_mask), width="stretch", theme=None)
             st.caption(
                 f"Sun elevation ranged from {min(sun):.2f} to {max(sun):.2f} degrees. "
                 f"Earth elevation ranged from {min(earth):.2f} to {max(earth):.2f} degrees."
             )
 
-            m = res["metrics"]
+            m = fractions(res, sun_mask, earth_mask)
             p, c, o = scores(m, w)
             st.subheader("Score")
             a1, a2, a3 = st.columns(3)
@@ -404,14 +435,15 @@ with tab2:
         st.plotly_chart(style_fig(fig), width="stretch", theme=None)
 
         st.subheader("Season view")
-        st.caption("How the share of time above the horizon changes month by month through one year.")
+        st.caption("How the share of time above the horizon changes month by month through one year "
+                   "(uses the horizon masks set in the Explorer tab).")
         sc1, sc2 = st.columns([1, 2])
         year = sc1.number_input("Year", min_value=1900, max_value=2049, value=2029, step=1)
         metric = sc2.radio("Show", ["Sunlit %", "Earth visible %"], horizontal=True)
         if st.toggle("Compute the season view for this year"):
             try:
-                with st.spinner("Computing 12 months for every site..."):
-                    yv = year_view(int(year))
+                with st.spinner("Computing a full year for every site..."):
+                    yv = year_view(int(year), sun_mask, earth_mask)
                 fig2 = go.Figure()
                 for name in yv["Site"].unique():
                     d = yv[yv["Site"] == name]
@@ -420,12 +452,31 @@ with tab2:
                 st.plotly_chart(style_fig(fig2), width="stretch", theme=None)
             except Exception as e:
                 note(f"The season view could not be computed: {e}", "warn")
+
+        st.subheader("Mission window finder")
+        st.caption("The best run of consecutive days in the chosen year for each site, using the power weight "
+                   "and horizon masks from the Explorer tab.")
+        wc1, wc2 = st.columns([1, 2])
+        days = wc1.number_input("Window length (days)", min_value=1, max_value=60, value=7, step=1)
+        if st.toggle("Find the best window"):
+            try:
+                with st.spinner("Scanning the year..."):
+                    wt = window_table(int(year), int(days), w, sun_mask, earth_mask)
+                st.dataframe(wt.round(1), width="stretch", hide_index=True)
+                top = wt.loc[wt["Overall"].idxmax()]
+                st.caption(
+                    f"Best overall: {top['Site']}, {top['Window start']} to {top['Window end']}, "
+                    f"overall score {top['Overall']:.1f}."
+                )
+            except Exception as e:
+                note(f"The window finder could not run: {e}", "warn")
     note(LIMITATION)
 
 with tab3:
     note("Every answer is built from numbers our engine computed for the window selected in the Explorer tab.", "warn")
     st.caption("Try: Which site has the longest sunlight? Which site has the best Earth link? Compare two sites. "
-               "What is the longest dark period at Nobile Rim 2? How is the score calculated?")
+               "What is the best window of the year? What is the longest dark period at Nobile Rim 2? "
+               "How is the score calculated?")
     if "messages" not in st.session_state:
         st.session_state.messages = []
     for msg in st.session_state.messages:
@@ -436,7 +487,13 @@ with tab3:
         if df_all is None:
             reply = "**Answer:** I need a valid date window first. Please set it in the Explorer tab."
         else:
-            reply = copilot_answer(prompt, df_all, window, w)
+            try:
+                reply = copilot_answer(
+                    prompt, df_all, window, w,
+                    lambda: window_table(start.year, 7, w, sun_mask, earth_mask),
+                )
+            except Exception as e:
+                reply = f"**Answer:** I could not compute that: {e}"
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.messages.append({"role": "assistant", "content": reply})
         st.rerun()
@@ -447,8 +504,8 @@ with tab4:
              "showing Sun and Earth elevation, power potential and communication windows.")
     st.subheader("How it works")
     st.write("For each time step the engine takes the Sun and Earth positions from NASA JPL ephemerides, "
-             "converts them to the Moon body frame, and computes the elevation above a flat local horizon "
-             "at the chosen site. Scores are shares of time the Sun or Earth is above the horizon.")
+             "converts them to the Moon body frame, and computes the elevation above a local horizon "
+             "at the chosen site. Scores are shares of time the Sun or Earth is above the horizon mask.")
     st.subheader("Data sources")
     st.write("Ephemerides and Moon orientation kernels: NASA JPL / NAIF (downloaded at first run). "
              "Computation: Skyfield. Region names come from NASA's Artemis III candidate region announcement. "

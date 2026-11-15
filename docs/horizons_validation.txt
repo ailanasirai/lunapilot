@@ -1,0 +1,21 @@
+﻿Connecting Ridge first engine times: ['2029-07-01T00:00:00+00:00', '2029-07-01T01:00:00+00:00']
+  Sun   max diff 0.000 deg, mean 0.000 deg (n=25)
+    ours    [0.13, 0.13, 0.14, 0.14]
+    horizons [0.13, 0.13, 0.14, 0.14]
+  Earth max diff 0.000 deg, mean 0.000 deg (n=25)
+    ours    [5.5, 5.53, 5.55, 5.58]
+    horizons [5.5, 5.53, 5.55, 5.58]
+Peak Near Shackleton first engine times: ['2029-07-01T00:00:00+00:00', '2029-07-01T01:00:00+00:00']
+  Sun   max diff 0.000 deg, mean 0.000 deg (n=25)
+    ours    [-0.81, -0.81, -0.81, -0.81]
+    horizons [-0.81, -0.81, -0.81, -0.81]
+  Earth max diff 0.000 deg, mean 0.000 deg (n=25)
+    ours    [5.4, 5.43, 5.46, 5.48]
+    horizons [5.4, 5.43, 5.46, 5.48]
+Nobile Rim 2 first engine times: ['2029-07-01T00:00:00+00:00', '2029-07-01T01:00:00+00:00']
+  Sun   max diff 0.000 deg, mean 0.000 deg (n=25)
+    ours    [-2.31, -2.35, -2.4, -2.45]
+    horizons [-2.31, -2.35, -2.4, -2.45]
+  Earth max diff 0.000 deg, mean 0.000 deg (n=25)
+    ours    [9.12, 9.15, 9.17, 9.19]
+    horizons [9.12, 9.15, 9.17, 9.19]
