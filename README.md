@@ -223,13 +223,13 @@ lunapilot/
 
 **Roadmap**
 
-- [ ] Measured terrain horizons from LRO LOLA data
+- [ ] Measured terrain horizons from LRO LOLA data (via NASA Moon Trek and Quickmap)
 - [ ] More Artemis III candidate regions
 - [ ] Optional language-model copilot that calls the engine as a tool
 
 ## 🤖 Use of AI
 
-We used Claude (Anthropic) as a coding and writing assistant for parts of the app code, the unit tests and this document. All numbers shown in the app come from our own engine and NASA data, and were checked against NASA JPL Horizons by the team. The in-app Copilot is rule-based and does not call a language model.
+We used Claude (Anthropic) as a coding and writing assistant for parts of the app code, the unit tests and this document. All numbers shown in the app come from our own engine and NASA data, and were checked against NASA JPL Horizons by the team. The in-app Copilot is rule-based and does not call a language model. The banner graphic and the app's visual design were created with AI assistance.
 
 ## 📚 Data sources and credits
 
