@@ -126,12 +126,15 @@ def analyze_site(
         elevation_m=0,
     )
 
-    # 5. Elevation of the Sun and Earth above the local horizon
-    sun_alt, _, _ = observer.at(t).observe(sun).apparent().altaz()
-    earth_alt, _, _ = observer.at(t).observe(earth).apparent().altaz()
+    # 5. Elevation AND azimuth of the Sun and Earth at the local horizon.
+    #    Azimuth (0 = north, 90 = east, clockwise) is needed for terrain horizons.
+    sun_alt, sun_az, _ = observer.at(t).observe(sun).apparent().altaz()
+    earth_alt, earth_az, _ = observer.at(t).observe(earth).apparent().altaz()
 
     sun_elevation_deg = [round(float(deg), 4) for deg in sun_alt.degrees]
     earth_elevation_deg = [round(float(deg), 4) for deg in earth_alt.degrees]
+    sun_azimuth_deg = [round(float(deg), 4) for deg in sun_az.degrees]
+    earth_azimuth_deg = [round(float(deg), 4) for deg in earth_az.degrees]
 
     # 6. Compute the 4 survival scores
     metrics = compute_metrics(sun_elevation_deg, earth_elevation_deg, step_minutes)
@@ -145,6 +148,8 @@ def analyze_site(
         "time": [dt.isoformat() for dt in dt_list],
         "sun_elevation_deg": sun_elevation_deg,
         "earth_elevation_deg": earth_elevation_deg,
+        "sun_azimuth_deg": sun_azimuth_deg,
+        "earth_azimuth_deg": earth_azimuth_deg,
         "metrics": metrics,
     }
 
@@ -159,5 +164,6 @@ if __name__ == "__main__":
     print("Sun min/max deg:", sun_min, "to", sun_max)
     print("Earth min/max deg:", min(result["earth_elevation_deg"]), "to", max(result["earth_elevation_deg"]))
     print("Metrics:", result["metrics"])
+    print("Sun azimuth min/max deg:", min(result["sun_azimuth_deg"]), "to", max(result["sun_azimuth_deg"]))
     assert -5 <= sun_min and sun_max <= 5, f"Sun range {sun_min}..{sun_max} is off, check the frame"
     print("Sanity check passed: Sun stays near the horizon")
