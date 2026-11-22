@@ -220,4 +220,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-data/ephemeris_cache/
+data/ephemeris_cache/data/terrain/
