@@ -13,16 +13,25 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from engine.analysis import best_window, fractions, monthly_table, scores  # noqa: E402
 from engine.geometry import analyze_site, load_sites  # noqa: E402
+from engine.terrain_data import apply_terrain, has_terrain, terrain_meta  # noqa: E402
 
 st.set_page_config(page_title="LunaPilot", page_icon="🌙", layout="wide")
 
 ASSETS = Path(__file__).parent / "assets"
 MIN_D, MAX_D = date(1900, 1, 1), date(2050, 1, 1)  # ephemeris kernel coverage
 LIMITATION = (
-    "Model scope: scores use a flat local horizon, and the geometry is validated against NASA JPL Horizons. "
+    "Model scope: by default scores use a flat local horizon, and the geometry is validated against NASA JPL Horizons. "
     "Near the pole the Sun stays within about 1.5 degrees of the horizon, so a flat horizon can give 0% or 100%. "
     "The horizon mask sliders are what-if tests for terrain or antenna limits, not measured terrain. "
-    "Measured LOLA terrain horizons are the next step."
+    "The optional terrain mode (experimental) uses NASA LOLA 5 m topography for one point only, "
+    "Connecting Ridge (best-lit point), and its results are preliminary."
+)
+TERRAIN_NOTE = (
+    "Terrain mode (experimental, preliminary): the horizon around this one point is computed from NASA LRO LOLA 5 m "
+    "topography (about 90% of those pixels are interpolated by NASA), out to 7 km, observer 2 m above ground, "
+    "Sun treated as a disk. Terrain results here are consistent with the published Connecting Ridge illumination "
+    "study (Glaser et al. 2014), a single-site, single-source check. They are not a measurement or a mission-grade result. "
+    "Other sites have no terrain data and keep the flat horizon."
 )
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -221,17 +230,19 @@ def get_sites():
 
 
 @st.cache_data(show_spinner=False)
-def run(site_id, start, end, step):
-    return analyze_site(site_id, start, end, step)
+def run(site_id, start, end, step, terrain=False):
+    res = analyze_site(site_id, start, end, step)
+    return apply_terrain(res, site_id) if terrain else res
 
 
-def site_rows(sites, start, end, step, w, sm, em):
+def site_rows(sites, start, end, step, w, sm, em, terrain=False):
     rows = []
     for s in sites:
-        m = fractions(run(s["id"], str(start), str(end), step), sm, em)
+        m = fractions(run(s["id"], str(start), str(end), step, terrain), sm, em)
         p, c, o = scores(m, w)
         rows.append({
             "Site": s["name"],
+            "Horizon": "LOLA terrain" if terrain and has_terrain(s["id"]) else "Flat",
             "Power score": p,
             "Comms score": c,
             "Overall": o,
@@ -242,10 +253,10 @@ def site_rows(sites, start, end, step, w, sm, em):
 
 
 @st.cache_data(show_spinner=False)
-def year_view(year, sm, em, step=120):
+def year_view(year, sm, em, step=120, terrain=False):
     frames = []
     for s in get_sites():
-        res = run(s["id"], f"{year}-01-01", f"{year}-12-31", step)
+        res = run(s["id"], f"{year}-01-01", f"{year}-12-31", step, terrain)
         g = monthly_table(res, sm, em).reset_index()
         g["Site"] = s["name"]
         g["Month"] = g["month"].map(lambda i: MONTHS[i - 1])
@@ -254,13 +265,14 @@ def year_view(year, sm, em, step=120):
 
 
 @st.cache_data(show_spinner=False)
-def window_table(year, days, w, sm, em, step=120):
+def window_table(year, days, w, sm, em, step=120, terrain=False):
     rows = []
     for s in get_sites():
-        res = run(s["id"], f"{year}-01-01", f"{year}-12-31", step)
+        res = run(s["id"], f"{year}-01-01", f"{year}-12-31", step, terrain)
         b = best_window(res, days, w, sm, em)
         rows.append({
             "Site": s["name"],
+            "Horizon": "LOLA terrain" if terrain and has_terrain(s["id"]) else "Flat",
             "Window start": b["start"].date().isoformat(),
             "Window end": b["end"].date().isoformat(),
             "Power %": b["power"],
@@ -299,7 +311,8 @@ def md_table(df):
 def copilot_answer(q, df, window, w, best_fn):
     """Tool-based answers. Every number comes from the engine results in df or best_fn()."""
     ql = q.lower()
-    caveat = "Scores are shares of time above the horizon mask. Default is a flat horizon with no terrain shadows."
+    caveat = ("Scores are shares of time above the horizon mask. Default is a flat horizon with no terrain shadows. "
+              "In terrain mode only the Connecting Ridge (best-lit point) uses preliminary LOLA terrain; see the Horizon column.")
     named = [n for n in df["Site"] if n.lower() in ql]
     sub = df[df["Site"].isin(named)] if named else df
 
@@ -350,6 +363,7 @@ step = 60
 sun_mask = 0.0
 earth_mask = 0.0
 start = date(2029, 7, 1)
+terrain = False
 
 with tab1:
     site_id = st.selectbox("Choose a landing site", site_ids, format_func=lambda i: by_id[i]["name"])
@@ -364,6 +378,10 @@ with tab1:
     earth_mask = d2.slider("Minimum Earth elevation for comms (degrees)", 0.0, 10.0, 0.0, 0.5,
                            help="Antenna or terrain limit. 0 means any Earth above the flat horizon counts.")
     st.caption("0 degrees is the validated flat-horizon geometry. Higher masks are what-if tests, not real terrain data.")
+    terrain = st.checkbox(
+        "Use LOLA terrain horizon (experimental, one site only)", value=False,
+        help="Applies a horizon computed from NASA LRO LOLA 5 m topography. Only 'Connecting Ridge (best-lit point)' has terrain data.",
+    )
 
     ok = end >= start and (end - start).days <= 366
     if end < start:
@@ -375,11 +393,13 @@ with tab1:
         window = f"{start} to {end}"
         if sun_mask > 0 or earth_mask > 0:
             window += f", Sun mask {sun_mask:g} deg, Earth mask {earth_mask:g} deg"
+        if terrain:
+            window += ", LOLA terrain (preliminary)"
         res = None
         try:
             with st.spinner("Computing Sun and Earth positions (the first run downloads about 18 MB of NASA kernels)..."):
-                res = run(site_id, str(start), str(end), step)
-                df_all = site_rows(sites, start, end, step, w, sun_mask, earth_mask)
+                res = run(site_id, str(start), str(end), step, terrain)
+                df_all = site_rows(sites, start, end, step, w, sun_mask, earth_mask, terrain)
         except Exception as e:  # keep the app alive and show a clear message
             note(f"The engine could not run: {e}", "warn")
 
@@ -393,13 +413,22 @@ with tab1:
             times = pd.to_datetime(res["time"])
             sun = res["sun_elevation_deg"]
             earth = res["earth_elevation_deg"]
+            on_terrain = bool(res.get("terrain_applied"))
+            sun_title = "Sun top edge above terrain horizon" if on_terrain else "Sun elevation"
+            earth_title = "Earth centre above terrain horizon" if on_terrain else "Earth elevation"
             left, right = st.columns(2)
-            left.plotly_chart(make_chart(times, sun, "Sun elevation", "#d6ff3f", sun_mask), width="stretch", theme=None)
-            right.plotly_chart(make_chart(times, earth, "Earth elevation", "#3fe0ff", earth_mask), width="stretch", theme=None)
+            left.plotly_chart(make_chart(times, sun, sun_title, "#d6ff3f", sun_mask), width="stretch", theme=None)
+            right.plotly_chart(make_chart(times, earth, earth_title, "#3fe0ff", earth_mask), width="stretch", theme=None)
+            what = "above the terrain horizon" if on_terrain else "elevation"
             st.caption(
-                f"Sun elevation ranged from {min(sun):.2f} to {max(sun):.2f} degrees. "
-                f"Earth elevation ranged from {min(earth):.2f} to {max(earth):.2f} degrees."
+                f"Sun {what} ranged from {min(sun):.2f} to {max(sun):.2f} degrees. "
+                f"Earth {what} ranged from {min(earth):.2f} to {max(earth):.2f} degrees."
             )
+            if on_terrain:
+                note(TERRAIN_NOTE, "warn")
+            elif terrain:
+                note("This site has no terrain data yet, so it uses the flat horizon. "
+                     "Choose 'Connecting Ridge (best-lit point)' to see terrain mode.", "warn")
 
             m = fractions(res, sun_mask, earth_mask)
             p, c, o = scores(m, w)
@@ -417,7 +446,9 @@ with tab1:
                 "Power = sunlit fraction x 100. Comms = Earth visible fraction x 100. "
                 f"Overall = {w:.2f} x power + {1 - w:.2f} x comms."
             )
-            data = pd.DataFrame({"time": times, "sun_elevation_deg": sun, "earth_elevation_deg": earth})
+            sun_col = "sun_top_edge_above_terrain_deg" if on_terrain else "sun_elevation_deg"
+            earth_col = "earth_centre_above_terrain_deg" if on_terrain else "earth_elevation_deg"
+            data = pd.DataFrame({"time": times, sun_col: sun, earth_col: earth})
             st.download_button("Download chart data (CSV)", data.to_csv(index=False),
                                f"lunapilot_{site_id}_{start}_{end}.csv", "text/csv")
     note(LIMITATION)
@@ -445,7 +476,7 @@ with tab2:
         if st.toggle("Compute the season view for this year"):
             try:
                 with st.spinner("Computing a full year for every site..."):
-                    yv = year_view(int(year), sun_mask, earth_mask)
+                    yv = year_view(int(year), sun_mask, earth_mask, terrain=terrain)
                 fig2 = go.Figure()
                 for name in yv["Site"].unique():
                     d = yv[yv["Site"] == name]
@@ -463,7 +494,7 @@ with tab2:
         if st.toggle("Find the best window"):
             try:
                 with st.spinner("Scanning the year..."):
-                    wt = window_table(int(year), int(days), w, sun_mask, earth_mask)
+                    wt = window_table(int(year), int(days), w, sun_mask, earth_mask, terrain=terrain)
                 st.dataframe(wt.round(1), width="stretch", hide_index=True)
                 top = wt.loc[wt["Overall"].idxmax()]
                 st.caption(
@@ -492,7 +523,7 @@ with tab3:
             try:
                 reply = copilot_answer(
                     prompt, df_all, window, w,
-                    lambda: window_table(start.year, 7, w, sun_mask, earth_mask),
+                    lambda: window_table(start.year, 7, w, sun_mask, earth_mask, terrain=terrain),
                 )
             except Exception as e:
                 reply = f"**Answer:** I could not compute that: {e}"
@@ -508,12 +539,16 @@ with tab4:
     st.write("For each time step the engine takes the Sun and Earth positions from NASA JPL ephemerides, "
              "converts them to the Moon body frame, and computes the elevation above a local horizon "
              "at the chosen site. Scores are shares of time the Sun or Earth is above the horizon mask.")
+    st.subheader("Terrain mode (experimental)")
+    st.write(TERRAIN_NOTE)
     st.subheader("Validation")
-    st.write("Sun and Earth elevations from our engine were compared with NASA JPL Horizons for all three sites "
+    st.write("Sun and Earth elevations from our engine (flat horizon) were compared with NASA JPL Horizons for the three original sites "
              "over 24 hours on 2029-07-01 (hourly samples). The maximum difference was 0.000 degrees for both bodies. "
-             "The log is in docs/horizons_validation.txt, and the score logic has unit tests in tests/.")
+             "The log is in docs/horizons_validation.txt, and the score logic has unit tests in tests/. "
+             "This validation covers the geometry only, not the terrain mode.")
     st.subheader("Data sources")
     st.write("Ephemerides and Moon orientation kernels: NASA JPL / NAIF (downloaded at first run). "
+             "Terrain mode: NASA PGDA high-resolution LOLA topography (Site01, M. K. Barker, LRO LOLA). "
              "Computation: Skyfield. Region names come from NASA's Artemis III candidate region announcement. "
              "Coordinates are approximate region centres taken from the sources below.")
     for s in sites:
